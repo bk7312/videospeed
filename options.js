@@ -1,30 +1,3 @@
-var regStrip = /^[\r\t\f\v ]+|[\r\t\f\v ]+$/gm;
-
-var tcDefaults = {
-  speed: 1.0, // default:
-  displayKeyCode: 86, // default: V
-  rememberSpeed: false, // default: false
-  audioBoolean: false, // default: false
-  startHidden: false, // default: false
-  forceLastSavedSpeed: false, //default: false
-  enabled: true, // default enabled
-  controllerOpacity: 0.3, // default: 0.3
-  keyBindings: [
-    { action: "display", key: 86, value: 0, force: false, predefined: true }, // V
-    { action: "slower", key: 83, value: 0.1, force: false, predefined: true }, // S
-    { action: "faster", key: 68, value: 0.1, force: false, predefined: true }, // D
-    { action: "rewind", key: 90, value: 10, force: false, predefined: true }, // Z
-    { action: "advance", key: 88, value: 10, force: false, predefined: true }, // X
-    { action: "reset", key: 82, value: 1, force: false, predefined: true }, // R
-    { action: "fast", key: 71, value: 1.8, force: false, predefined: true } // G
-  ],
-  blacklist: `www.instagram.com
-    twitter.com
-    imgur.com
-    teams.microsoft.com
-  `.replace(regStrip, "")
-};
-
 var keyBindings = [];
 
 var keyCodeAliases = {
@@ -142,6 +115,8 @@ function add_shortcut() {
     <option value="mark">Set marker</option>
     <option value="jump">Jump to marker</option>
     <option value="display">Show/hide controller</option>
+    <option value="softer">Decrease volume</option>
+    <option value="louder">Increase volume</option>
     </select>
     <input class="customKey" type="text" placeholder="press a key"/>
     <input class="customValue" type="text" placeholder="value (0.10)"/>
@@ -165,7 +140,7 @@ function createKeyBindings(item) {
   const key = item.querySelector(".customKey").keyCode;
   const value = Number(item.querySelector(".customValue").value);
   const force = item.querySelector(".customForce").value;
-  const predefined = !!item.id; //item.id ? true : false;
+  const predefined = !!item.id; // item.id ? true : false;
 
   keyBindings.push({
     action: action,
@@ -184,13 +159,12 @@ function validate() {
 
   blacklist.value.split("\n").forEach((match) => {
     match = match.replace(regStrip, "");
-    
+
     if (match.startsWith("/")) {
       try {
         var parts = match.split("/");
 
-        if (parts.length < 3)
-          throw "invalid regex";
+        if (parts.length < 3) throw "invalid regex";
 
         var flags = parts.pop();
         var regex = parts.slice(1).join("/");
@@ -198,7 +172,9 @@ function validate() {
         var regexp = new RegExp(regex, flags);
       } catch (err) {
         status.textContent =
-          "Error: Invalid blacklist regex: \"" + match + "\". Unable to save. Try wrapping it in foward slashes.";
+          'Error: Invalid blacklist regex: "' +
+          match +
+          '". Unable to save. Try wrapping it in foward slashes.';
         valid = false;
         return;
       }
@@ -218,7 +194,9 @@ function save_options() {
   ); // Remove added shortcuts
 
   var rememberSpeed = document.getElementById("rememberSpeed").checked;
-  var forceLastSavedSpeed = document.getElementById("forceLastSavedSpeed").checked;
+  var forceLastSavedSpeed = document.getElementById(
+    "forceLastSavedSpeed"
+  ).checked;
   var audioBoolean = document.getElementById("audioBoolean").checked;
   var enabled = document.getElementById("enabled").checked;
   var startHidden = document.getElementById("startHidden").checked;
@@ -264,7 +242,8 @@ function save_options() {
 function restore_options() {
   chrome.storage.sync.get(tcDefaults, function (storage) {
     document.getElementById("rememberSpeed").checked = storage.rememberSpeed;
-    document.getElementById("forceLastSavedSpeed").checked = storage.forceLastSavedSpeed;
+    document.getElementById("forceLastSavedSpeed").checked =
+      storage.forceLastSavedSpeed;
     document.getElementById("audioBoolean").checked = storage.audioBoolean;
     document.getElementById("enabled").checked = storage.enabled;
     document.getElementById("startHidden").checked = storage.startHidden;
