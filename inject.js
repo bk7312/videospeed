@@ -306,11 +306,31 @@ function defineVideoController() {
       .addEventListener("mousedown", (e) => e.stopPropagation(), false);
 
     this.speedIndicator = shadow.querySelector("span");
+    //scroll speed control
+    shadow.querySelector("#controller").addEventListener(
+      "wheel",
+      (event) => {
+        event.preventDefault();
+        const delta = Math.sign(event.deltaY);
+        const step = 0.1;
+
+        let newSpeed = this.video.playbackRate + (delta < 0 ? step : -step);
+        newSpeed = Math.min(Math.max(newSpeed, 0.1), 16); // Clamp between 0.1x and 16x
+        this.video.playbackRate = newSpeed;
+
+        // Update visual speed display
+        this.speedIndicator.textContent = newSpeed.toFixed(2);
+      },
+      { passive: false }
+    );
     var fragment = document.createDocumentFragment();
     fragment.appendChild(wrapper);
 
     switch (true) {
-      case location.hostname == "www.amazon.com":
+      // Only special-case Prime Video, not product-page videos (which use
+      // "vjs-tech"), otherwise the overlay disappears in fullscreen mode
+      case location.hostname == "www.amazon.com" &&
+        !this.video.classList.contains("vjs-tech"):
       case location.hostname == "www.reddit.com":
       case /hbogo\./.test(location.hostname):
         // insert before parent to bypass overlay
@@ -433,7 +453,13 @@ function setupListener() {
         log("Speed event propagation blocked", 4);
         event.stopImmediatePropagation();
       }
-      var video = event.target;
+      /**
+       * Normally we'd do 'event.target' here. But that doesn't work with shadow DOMs. For
+       * an event that bubbles up out of a shadow DOM, event.target is the root of the shadow
+       * DOM. For 'open' shadow DOMs, event.composedPath()[0] is the actual element that will
+       * first receive the event, and it's equivalent to event.target in non-shadow-DOM cases.
+       */
+      var video = event.composedPath()[0];
 
       /**
        * If the last speed is forced, only update the speed based on events created by
@@ -516,6 +542,8 @@ function initializeNow(document) {
   }
   document.body.classList.add("vsc-initialized");
   log("initializeNow: vsc-initialized added to document body", 5);
+
+  injectScriptForSite();
 
   if (document === window.document) {
     defineVideoController();
@@ -728,6 +756,9 @@ function setSpeed(video, speed) {
   if (tc.settings.forceLastSavedSpeed) {
     video.dispatchEvent(
       new CustomEvent("ratechange", {
+        // bubbles and composed are needed to allow event to 'escape' open shadow DOMs
+        bubbles: true,
+        composed: true,
         detail: { origin: "videoSpeed", speed: speedvalue }
       })
     );
@@ -764,10 +795,10 @@ function runAction(action, value, e) {
     if (!v.classList.contains("vsc-cancelled")) {
       if (action === "rewind") {
         log("Rewind", 5);
-        v.currentTime -= value;
+        seek(v, -value);
       } else if (action === "advance") {
         log("Fast forward", 5);
-        v.currentTime += value;
+        seek(v, value);
       } else if (action === "faster") {
         log("Increase speed", 5);
         // Maximum playback speed in Chrome is set to 16:
@@ -816,15 +847,42 @@ function runAction(action, value, e) {
       } else if (action === "muted") {
         muted(v);
       } else if (action === "louder") {
-        volumeUp(v);
+        volumeUp(v, value);
       } else if (action === "softer") {
-        volumeDown(v);
+        volumeDown(v, value);
+      } else if (action === "mark") {
+        setMark(v);
       } else if (action === "jump") {
         jumpToMark(v);
       }
     }
   });
   log("runAction End", 5);
+}
+
+function injectScriptForSite() {
+  const elt = document.createElement("script");
+  switch (true) {
+    case location.hostname == "www.netflix.com":
+      elt.src = chrome.runtime.getURL("scriptforsite/netflix.js");
+      break;
+  }
+  if (elt.src) {
+    document.head.appendChild(elt);
+  }
+}
+
+function seek(mediaTag, seekSeconds) {
+  switch (true) {
+    case location.hostname == "www.netflix.com":
+      window.postMessage(
+        { action: "videospeed-seek", seekMs: seekSeconds * 1000 },
+        "https://www.netflix.com"
+      );
+      break;
+    default:
+      mediaTag.currentTime += seekSeconds;
+  }
 }
 
 function pause(v) {
@@ -860,14 +918,6 @@ function resetSpeed(v, target) {
 
 function muted(v) {
   v.muted = v.muted !== true;
-}
-
-function volumeUp(v) {
-  v.volume = Math.min(1, (v.volume + 0.1).toFixed(2));
-}
-
-function volumeDown(v) {
-  v.volume = Math.max(0, (v.volume - 0.1).toFixed(2));
 }
 
 function setMark(v) {
@@ -940,3 +990,40 @@ function showController(controller) {
     log("Hiding controller", 5);
   }, 2000);
 }
+
+const speedMod = (multiplier) => {
+  document.querySelectorAll("video, audio").forEach((media) => {
+    try {
+      media.playbackRate *= multiplier;
+      log("Playback rate changed to " + media.playbackRate, 4);
+    } catch (e) {
+      log(e, 2);
+    }
+  });
+};
+
+chrome.runtime.onMessage.addListener((req, snd, rsp) => {
+  if (req === "slow-down-01") {
+    speedMod(0.1);
+  } else if (req === "slow-down-02") {
+    speedMod(0.2);
+  } else if (req === "slow-down-04") {
+    speedMod(0.4);
+  } else if (req === "slow-down-06") {
+    speedMod(0.6);
+  } else if (req === "slow-down-08") {
+    speedMod(0.8);
+  } else if (req === "speed-up-12") {
+    speedMod(1.2);
+  } else if (req === "speed-up-14") {
+    speedMod(1.4);
+  } else if (req === "speed-up-16") {
+    speedMod(1.6);
+  } else if (req === "speed-up-18") {
+    speedMod(1.8);
+  } else if (req === "speed-up-20") {
+    speedMod(2.0);
+  }
+
+  rsp();
+});
